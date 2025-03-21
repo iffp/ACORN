@@ -625,6 +625,44 @@ std::vector<int> read_int_pair_attributes(const char* filename, size_t* d_out, s
     return data;
 }
 
+#include <fstream>
+#include <vector>
+#include <iostream>
+
+std::vector<std::vector<int>> read_ivecs(const char* filename) {
+    std::ifstream input(filename, std::ios::binary);
+    if (!input) {
+        std::cerr << "Failed to open file: " << filename << "\n";
+        return {};
+    }
+
+    std::vector<std::vector<int>> data;
+
+    while (input.peek() != EOF) {
+        int dim = 0;
+        input.read(reinterpret_cast<char*>(&dim), sizeof(int));
+        if (input.eof()) break;
+
+        if (dim <= 0 || dim > 1e6) {
+            std::cerr << "Invalid dimension read: " << dim << "\n";
+            break;
+        }
+
+        std::vector<int> vec(dim);
+        input.read(reinterpret_cast<char*>(vec.data()), dim * sizeof(int));
+
+        if (!input) {
+            std::cerr << "Unexpected EOF or read error\n";
+            break;
+        }
+
+        data.push_back(std::move(vec));
+    }
+
+    return data;
+}
+
+
 
 
 

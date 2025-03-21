@@ -107,17 +107,18 @@ int main(int argc, char *argv[]) {
 	assert(n_queries == n_queries_2 && "Number of queries in query vectors and query attributes do not match");
 	assert(n_attributes == n_attributes_2 && "Number of attributes in database and query attributes do not match");
 
-	// Read ground-truth:
-	size_t n_queries_3, k_2;
-	int* groundtruth_all;						// n_queries x k
-	groundtruth_all = ivecs_read(path_groundtruth.c_str(), &k_2, &n_queries_3);
+	// Read ground-truth and truncate to at most k
+	size_t n_queries_3;
+	std::vector<std::vector<int>> groundtruth;
+	groundtruth = read_ivecs(path_groundtruth.c_str());
+	n_queries_3 = groundtruth.size();
 	assert(n_queries == n_queries_3 && "Number of queries in query vectors and groundtruth do not match");
-	assert(k_2 >= k && "Groundtruth file does not contain enough neighbors for k = " + std::to_string(k));
-	// Only keep the first k elements
-    int* groundtruth = new int[n_queries * k];  // Allocate new memory for groundtruth
-    for (size_t q = 0; q < n_queries; ++q) {
-        std::memcpy(groundtruth + q * k, groundtruth_all + q * k_2, k * sizeof(int));  // Copy first k elements
+	for (std::size_t i = 0; i < groundtruth.size(); ++i) {
+        if (groundtruth[i].size() > static_cast<std::size_t>(k)) {
+            groundtruth[i].resize(k);
+        }
     }
+	
 
 	// Load index from file
 	auto& acorn_index = *dynamic_cast<faiss::IndexACORNFlat*>(faiss::read_index(path_index.c_str()));
@@ -167,27 +168,31 @@ int main(int argc, char *argv[]) {
 	}
 
 	// Execute queries on ACORN index
+	// TODO: How does ACORN behave if there are less than k matching items?
     std::vector<faiss::idx_t> nearest_neighbors(k * n_queries);
 	std::vector<float> distances(k * n_queries);
 	acorn_index.search(n_queries, query_vectors, k, distances.data(), nearest_neighbors.data(), filter_bitmap.data());
 	double query_execution_time = elapsed() - t0;		
     peak_memory_footprint();
 
-	// Compute recall TODO
-	size_t n_correct = 0;
+	// Compute recall 
+	// TODO: Check what happens (what ACORN returns) if there are less than k matching items
+	size_t match_count = 0;
+	size_t total_count = 0;
 	faiss::idx_t* nearest_neighbors_ptr = nearest_neighbors.data();
 	for (size_t q = 0; q < n_queries; q++) {
-		std::sort(groundtruth + q * k, groundtruth + (q + 1) * k);
-		std::sort(nearest_neighbors_ptr + q * k, nearest_neighbors_ptr + (q + 1) * k);
+		int n_valid_neighbors = std::min(k, (int)groundtruth[q].size());
+		std::vector<int> groundtruth_q = groundtruth[q];
+		std::vector<int> nearest_neighbors_q(nearest_neighbors_ptr + q * k, nearest_neighbors_ptr + (q+1) * k);
+		std::sort(groundtruth_q.begin(), groundtruth_q.end());
+		std::sort(nearest_neighbors_q.begin(), nearest_neighbors_q.end());
 		std::vector<int> intersection;
-		std::set_intersection(groundtruth + q * k, groundtruth + (q + 1) * k, nearest_neighbors_ptr + q * k, nearest_neighbors_ptr + (q + 1) * k, std::back_inserter(intersection));
-		n_correct += intersection.size();
+		std::set_intersection(groundtruth_q.begin(), groundtruth_q.begin() + n_valid_neighbors, nearest_neighbors_q.begin(), nearest_neighbors_q.begin() + k, std::back_inserter(intersection));
+		match_count += intersection.size();
+		total_count += n_valid_neighbors;
 	}
-	double recall = (double)n_correct / (n_queries * k);
+	double recall = (double)match_count / total_count;
 	double qps = (double)n_queries / query_execution_time;
 	printf("Queries per second: %.3f\n", qps);
 	printf("Recall: %.3f\n", recall);
-
-	// Clean up
-	delete[] groundtruth;
 }
