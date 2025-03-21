@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
     std::vector<faiss::idx_t> nearest_neighbors(k * n_queries);
 	std::vector<float> distances(k * n_queries);
 	acorn_index.search(n_queries, query_vectors, k, distances.data(), nearest_neighbors.data(), filter_bitmap.data());
-	printf("Query execution time: %.3f s\n", elapsed() - t0);
+	double query_execution_time = elapsed() - t0;		
     peak_memory_footprint();
 
 	// Compute recall TODO
@@ -184,6 +184,8 @@ int main(int argc, char *argv[]) {
 		n_correct += intersection.size();
 	}
 	double recall = (double)n_correct / (n_queries * k);
+	double qps = (double)n_queries / query_execution_time;
+	printf("Queries per second: %.3f\n", qps);
 	printf("Recall: %.3f\n", recall);
 
 	// Clean up
