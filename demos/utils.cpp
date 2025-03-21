@@ -65,11 +65,6 @@ using json = nlohmann::json;
 
 // using namespace std;
 
-
-
-
-
-
  /*****************************************************
  * I/O functions for fvecs and ivecs
  *****************************************************/
@@ -540,23 +535,95 @@ std::vector<faiss::idx_t> load_gt(std::string dataset, int n_centroids, int alph
         std::cerr << "Invalid dataset in load_gt" << std::endl;
         return std::vector<faiss::idx_t>();
     }
-    
-
 }
 
+std::vector<int> read_int_attributes(const char* filename, size_t* n_out, size_t* a_out) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return {};
+    }
 
+    std::vector<int> data;
+    std::string line;
+    size_t max_columns = -1;
+    size_t num_rows = 0;
 
+    while (std::getline(file, line)) {
+        std::stringstream ss(line);
+        std::string cell;
+        size_t num_columns = 0;
 
+        while (std::getline(ss, cell, ',')) {
+            try {
+                data.push_back(std::stoi(cell));  // Convert to int and store
+            } catch (...) {
+                std::cerr << "Warning: Non-integer value found, skipping.\n";
+            }
+            num_columns++;
+        }
+		assert((max_columns == -1 || num_columns == max_columns) && "Inconsistent number of columns in file");
+        if (num_columns > max_columns) {
+            max_columns = num_columns;
+        }
+        num_rows++;
+    }
 
+    file.close();
 
+    *n_out = num_rows;   	// Number of rows
+    *a_out = max_columns; 	// Max columns per row
+    return data;
+}
 
+std::vector<int> read_int_pair_attributes(const char* filename, size_t* d_out, size_t* n_out) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return {};
+    }
 
+    std::vector<int> data;
+    std::string line;
+    size_t max_columns = 0;
+    size_t num_rows = 0;
 
+    while (std::getline(file, line)) {
+        std::stringstream ss(line);
+        std::string cell;
+        size_t num_columns = 0;
 
+        while (std::getline(ss, cell, ',')) {  // Read CSV cells
+            std::stringstream pair_stream(cell);
+            std::string x_str, y_str;
 
+            if (std::getline(pair_stream, x_str, '-') && std::getline(pair_stream, y_str)) {
+                try {
+                    int x = std::stoi(x_str);
+                    int y = std::stoi(y_str);
+                    data.push_back(x);
+                    data.push_back(y);
+                } catch (...) {
+                    std::cerr << "Warning: Non-integer value found in entry '" << cell << "', skipping.\n";
+                }
+            }
+            num_columns++;
+        }
 
+        if (num_columns > max_columns) {
+            max_columns = num_columns;
+        }
 
+        num_rows++;
+    }
 
+    file.close();
+
+    *n_out = num_rows;   // Number of rows
+    *d_out = max_columns; // Since each entry expands to 2 integers
+
+    return data;
+}
 
 
 
