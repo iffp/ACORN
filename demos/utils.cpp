@@ -546,7 +546,7 @@ std::vector<int> read_int_attributes(const char* filename, size_t* n_out, size_t
 
     std::vector<int> data;
     std::string line;
-    size_t max_columns = -1;
+    size_t max_columns = 0;
     size_t num_rows = 0;
 
     while (std::getline(file, line)) {

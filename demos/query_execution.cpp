@@ -103,7 +103,12 @@ int main(int argc, char *argv[]) {
 	// Read query attributes
 	size_t n_queries_2, n_attributes_2;
 	std::vector<int> query_attributes;		// n_queries x n_attributes
-	query_attributes = read_int_attributes(path_query_attributes.c_str(), &n_queries_2, &n_attributes_2);
+	if (filter_type == "EM" or filter_type == "EMIS"){
+		query_attributes = read_int_attributes(path_query_attributes.c_str(), &n_queries_2, &n_attributes_2);
+	}
+	else if (filter_type == "R"){
+		query_attributes = read_int_pair_attributes(path_query_attributes.c_str(), &n_queries_2, &n_attributes_2);
+	}
 	assert(n_queries == n_queries_2 && "Number of queries in query vectors and query attributes do not match");
 	assert(n_attributes == n_attributes_2 && "Number of attributes in database and query attributes do not match");
 
