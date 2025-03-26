@@ -39,24 +39,9 @@
 #include <nlohmann/json.hpp>
 #include "utils.cpp"
 
-void peak_memory_footprint()
-{
-    unsigned iPid = (unsigned)getpid();
-    std::string status_file = "/proc/" + std::to_string(iPid) + "/status";
-    std::ifstream info(status_file);
-    if (!info.is_open())
-    {
-        std::cout << "memory information open error!" << std::endl;
-    }
-    std::string tmp;
-    while (getline(info, tmp))
-    {
-        if (tmp.find("Name:") != std::string::npos || tmp.find("VmPeak:") != std::string::npos || tmp.find("VmHWM:") != std::string::npos)
-            std::cout << tmp << std::endl;
-    }
-    info.close();
-}
+#include "fanns_survey_helpers.cpp"
 
+using namespace std;
 
 // Execute the queries, compute and report the recall
 int main(int argc, char *argv[]) {
@@ -90,40 +75,15 @@ int main(int argc, char *argv[]) {
 	k = atoi(argv[7]);
 	efs = atoi(argv[8]);
 
-	// Read database attributes
-	size_t n_items, n_attributes;
-	std::vector<int> database_attributes;	// n_items x n_attributes
-	database_attributes = read_int_attributes(path_database_attributes.c_str(), &n_items, &n_attributes);
-
 	// Read query vectors
     size_t n_queries, d;
     float* query_vectors;					// n_queries x d
 	query_vectors = fvecs_read(path_query_vectors.c_str(), &d, &n_queries);
 
-	// Read query attributes
-	size_t n_queries_2, n_attributes_2;
-	std::vector<int> query_attributes;		// n_queries x n_attributes
-	if (filter_type == "EM" or filter_type == "EMIS"){
-		query_attributes = read_int_attributes(path_query_attributes.c_str(), &n_queries_2, &n_attributes_2);
-	}
-	else if (filter_type == "R"){
-		query_attributes = read_int_pair_attributes(path_query_attributes.c_str(), &n_queries_2, &n_attributes_2);
-	}
-	assert(n_queries == n_queries_2 && "Number of queries in query vectors and query attributes do not match");
-	assert(n_attributes == n_attributes_2 && "Number of attributes in database and query attributes do not match");
-
-	// Read ground-truth and truncate to at most k
-	size_t n_queries_3;
+	// Read ground-truth
 	std::vector<std::vector<int>> groundtruth;
-	groundtruth = read_ivecs(path_groundtruth.c_str());
-	n_queries_3 = groundtruth.size();
-	assert(n_queries == n_queries_3 && "Number of queries in query vectors and groundtruth do not match");
-	for (std::size_t i = 0; i < groundtruth.size(); ++i) {
-        if (groundtruth[i].size() > static_cast<std::size_t>(k)) {
-            groundtruth[i].resize(k);
-        }
-    }
-	
+	groundtruth = read_ivecs(path_groundtruth);
+	assert(n_queries == groundtruth.size() && "Number of queries in query vectors and groundtruth do not match");
 
 	// Load index from file
 	auto& acorn_index = *dynamic_cast<faiss::IndexACORNFlat*>(faiss::read_index(path_index.c_str()));
@@ -133,41 +93,54 @@ int main(int argc, char *argv[]) {
 
 	double t0 = elapsed();
 	// Compute bitmap for filtering
-	std::vector<char> filter_bitmap(n_queries * n_items);
-	// EM: We support multiple attributes for EM-filtering
+	std::vector<char> filter_bitmap;
+	// EM
 	if (filter_type == "EM"){
+		// Read database attributes
+		vector<int> database_attributes = read_one_int_per_line(path_database_attributes);
+		size_t n_items = database_attributes.size();
+		// Read query attributes
+		vector<int> query_attributes = read_one_int_per_line(path_query_attributes);
+		assert(n_queries == query_attributes.size() && "Number of queries in query vectors and query attributes do not match");
+		// Compute filter bitmap
+		filter_bitmap.resize(n_queries * n_items);
 		for (size_t q = 0; q < n_queries; q++) {
 			for (size_t i = 0; i < n_items; i++) {
-				bool match = true;
-				for (size_t a = 0; a < n_attributes; a++) {
-					if ( database_attributes[i * n_attributes + a] != query_attributes[q * n_attributes + a]) {
-						match = false;
-						break;
-					}
-				}
-				filter_bitmap[q * n_items + i] = match;
+				filter_bitmap[q * n_items + i] = (database_attributes[i] == query_attributes[q]);
 			}
 		}
 	}
-	// R: We support multiple attributes for range-filtering
+	// R
 	else if (filter_type == "R"){
+		// Read database attributes
+		vector<int> database_attributes = read_one_int_per_line(path_database_attributes);
+		size_t n_items = database_attributes.size();
+		// Read query attributes
+		vector<pair<int,int>> query_attributes = read_two_ints_per_line(path_query_attributes);
+		assert(n_queries == query_attributes.size() && "Number of queries in query vectors and query attributes do not match");
+		// Compute filter bitmap
+		filter_bitmap.resize(n_queries * n_items);
 		for (size_t q = 0; q < n_queries; q++) {
 			for (size_t i = 0; i < n_items; i++) {
-				bool match = true;
-				for (size_t a = 0; a < n_attributes; a++) {
-					if (( database_attributes[i * n_attributes + a] >= query_attributes[q * n_attributes * 2 + a * 2]) &&
-					   	( database_attributes[i * n_attributes + a] <= query_attributes[q * n_attributes * 2 + a * 2 + 1])) { 
-						match = false;
-						break;
-					}
-				}
-				filter_bitmap[q * n_items + i] = match;
+				filter_bitmap[q * n_items + i] = (database_attributes[i] >= query_attributes[q].first && database_attributes[i] <= query_attributes[q].second);
 			}
 		}
 	}
-	// EMIS: TODO
+	// EMIS
 	else if (filter_type == "EMIS"){
-		fprintf(stderr, "EMIS filtering not implemented yet\n");
+		// Read database attributes
+		vector<vector<int>> database_attributes = read_multiple_ints_per_line(path_database_attributes);
+		size_t n_items = database_attributes.size();
+		// Read query attributes
+		vector<int> query_attributes = read_one_int_per_line(path_query_attributes);
+		assert(n_queries == query_attributes.size() && "Number of queries in query vectors and query attributes do not match");
+		// Compute filter bitmap
+		filter_bitmap.resize(n_queries * n_items);
+		for (size_t q = 0; q < n_queries; q++) {
+			for (size_t i = 0; i < n_items; i++) {
+				filter_bitmap[q * n_items + i] = (find(database_attributes[i].begin(), database_attributes[i].end(), query_attributes[q]) != database_attributes[i].end());
+			}
+		}
 	} else {
 		fprintf(stderr, "Unknown filter type: %s\n", filter_type.c_str());
 	}
@@ -178,10 +151,10 @@ int main(int argc, char *argv[]) {
 	std::vector<float> distances(k * n_queries);
 	acorn_index.search(n_queries, query_vectors, k, distances.data(), nearest_neighbors.data(), filter_bitmap.data());
 	double query_execution_time = elapsed() - t0;		
-    peak_memory_footprint();
 
 	// Compute recall 
 	// TODO: Check what happens (what ACORN returns) if there are less than k matching items
+	// I guess -1 for the remaining items
 	size_t match_count = 0;
 	size_t total_count = 0;
 	faiss::idx_t* nearest_neighbors_ptr = nearest_neighbors.data();
@@ -198,6 +171,7 @@ int main(int argc, char *argv[]) {
 	}
 	double recall = (double)match_count / total_count;
 	double qps = (double)n_queries / query_execution_time;
+    peak_memory_footprint();
 	printf("Queries per second: %.3f\n", qps);
 	printf("Recall: %.3f\n", recall);
 }

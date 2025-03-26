@@ -39,23 +39,9 @@
 #include <nlohmann/json.hpp>
 #include "utils.cpp"
 
-void peak_memory_footprint()
-{
-    unsigned iPid = (unsigned)getpid();
-    std::string status_file = "/proc/" + std::to_string(iPid) + "/status";
-    std::ifstream info(status_file);
-    if (!info.is_open())
-    {
-        std::cout << "memory information open error!" << std::endl;
-    }
-    std::string tmp;
-    while (getline(info, tmp))
-    {
-        if (tmp.find("Name:") != std::string::npos || tmp.find("VmPeak:") != std::string::npos || tmp.find("VmHWM:") != std::string::npos)
-            std::cout << tmp << std::endl;
-    }
-    info.close();
-}
+#include "fanns_survey_helpers.cpp"
+
+
 
 
 // Create index, write it to file and collect statistics
@@ -86,6 +72,7 @@ int main(int argc, char *argv[]) {
 
 	// Read vectors from file
 	size_t n_items, d;
+	// fvecs_read is from utils.cpp and returns a float*, read_fvecs is from fanns_survey_helpers.cpp and returns a vector<vector<float>>
 	float* database_vectors = fvecs_read(path_database_vectors.c_str(), &d, &n_items);
 
 	// According to the following GitHub issue, the metadata does not influence the performance of ACORN:
