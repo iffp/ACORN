@@ -85,6 +85,13 @@ int main(int argc, char *argv[]) {
 	groundtruth = read_ivecs(path_groundtruth);
 	assert(n_queries == groundtruth.size() && "Number of queries in query vectors and groundtruth do not match");
 
+	// Truncate ground-truth to at most k items
+	for (std::vector<int>& vec : groundtruth) {
+		if (vec.size() > k) {
+			vec.resize(k);
+		}
+	}
+
 	// Load index from file
 	auto& acorn_index = *dynamic_cast<faiss::IndexACORNFlat*>(faiss::read_index(path_index.c_str()));
 
@@ -165,7 +172,7 @@ int main(int argc, char *argv[]) {
 		std::sort(groundtruth_q.begin(), groundtruth_q.end());
 		std::sort(nearest_neighbors_q.begin(), nearest_neighbors_q.end());
 		std::vector<int> intersection;
-		std::set_intersection(groundtruth_q.begin(), groundtruth_q.begin() + n_valid_neighbors, nearest_neighbors_q.begin(), nearest_neighbors_q.begin() + k, std::back_inserter(intersection));
+		std::set_intersection(groundtruth_q.begin(), groundtruth_q.end(), nearest_neighbors_q.begin(), nearest_neighbors_q.begin() + k, std::back_inserter(intersection));
 		match_count += intersection.size();
 		total_count += n_valid_neighbors;
 	}
